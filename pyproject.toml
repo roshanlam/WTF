@@ -16,6 +16,12 @@ fastapi = "^0.120.3"
 uvicorn = {extras = ["standard"], version = "^0.38.0"}
 redis = "^7.0.1"
 python-dotenv = "^1.2.1"
+requests = "^2.32.5"
+numpy = "^2.3.5"
+pandas = "^2.3.3"
+seaborn = "^0.13.2"
+matplotlib = "^3.10.7"
+dotenv = "^0.9.9"
 
 
 [tool.poetry.group.dev.dependencies]

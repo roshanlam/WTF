@@ -1,2 +1,122 @@
-def main():
-    print("LLM Agent Here...")
+import os
+import time
+import json
+import requests
+import concurrent.futures
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+def main(row_data):
+    """
+    Send tweet to Cloudflare AI using JSON mode with schema.
+    Args:
+        row_data: dict with keys 'club_name', 'tweet', 'food_label'
+        model_path: the model path to use (e.g., '@cf/meta/llama-3.1-8b-instruct-fast')
+    Returns:
+        ok (bool), latency (float), result (dict), ground_truth (int)
+    """
+
+    API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN")
+    API_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID") 
+    HEADERS = {"Authorization": f"Bearer {API_TOKEN}"}
+    try:
+        start = time.time()
+        
+        tweet = row_data.get('tweet', '')
+        ground_truth = int(row_data.get('food_label', 0))
+        
+        api_url = f"https://api.cloudflare.com/client/v4/accounts/{API_ACCOUNT_ID}/ai/run/{@cf/meta/llama-3.1-70b-instruct-fp8-fast}"
+
+        # Payload with JSON mode and schema
+        payload = {
+            "messages": [
+                {
+                    "role": "system", 
+                    "content": """You are a precise assistant that detects food availability at events from social media posts.
+
+CRITICAL RULES:
+1. Set food_available to true ONLY if the post explicitly mentions food, snacks, drinks, meals, refreshments, or similar items being served/provided.
+2. If food_available is true, extract the location and date_time from the post.
+3. If food_available is false, DO NOT include location or date_time fields in your response at all.
+4. Look for keywords like: food, snacks, pizza, bagels, cookies, lunch, dinner, breakfast, drinks, refreshments, BBQ, burritos, pasta, sandwiches, etc.
+5. Events without food mentions should have food_available set to false.
+
+Examples:
+- "Free pizza at the event!" → food_available: true, location: [extract], date_time: [extract]
+- "Join us for a meeting" → food_available: false (no location/time fields)
+- "Come to our workshop, snacks provided!" → food_available: true"""
+                },
+                {
+                    "role": "user", 
+                    "content": tweet
+                }
+            ],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "type": "object",
+                    "properties": {
+                        "food_available": {
+                            "type": "boolean",
+                            "description": "True only if food/drinks/snacks are explicitly mentioned as being provided"
+                        },
+                        "location": {
+                            "type": "string",
+                            "description": "The location where food will be available. Only include if food_available is true."
+                        },
+                        "date_time": {
+                            "type": "string",
+                            "description": "The date and time when food will be available. Only include if food_available is true."
+                        }
+                    },
+                    "required": ["food_available"]
+                }
+            }
+        }
+
+        response = requests.post(
+            api_url,
+            headers=HEADERS,
+            json=payload,
+            timeout=45
+        )
+
+        latency = time.time() - start
+
+        if response.status_code == 200:
+            try:
+                json_result = response.json()
+                # Parse the JSON response from the model
+                response_text = json_result.get("result", {}).get("response")
+                if response_text:
+                    # The response should already be a JSON object
+                    if isinstance(response_text, dict):
+                        result = response_text
+                    else:
+                        result = json.loads(response_text)
+                    
+                    # Add club_name to the result
+                    result['club_name'] = row_data.get('club_name', 'Unknown')
+                    
+                    return True, latency, result, ground_truth
+                else:
+                    return False, latency, None, ground_truth
+            except Exception as e:
+                print(f"[ERROR] JSON parse error: {str(e)}")
+                print(f"[ERROR] Raw response: {json_result}")
+                return False, latency, None, ground_truth
+        else:
+            error_msg = f"Status {response.status_code}: {response.text}"
+            print(f"[ERROR] {error_msg}")
+            return False, latency, None, ground_truth
+
+    except Exception as e:
+        latency = time.time() - start
+        print(f"[ERROR] Exception: {str(e)}")
+        return False, latency, None, 0
