@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def main(row_data):
+def run_agent_json_mode(row_data, model_path):
     """
     Send tweet to Cloudflare AI using JSON mode with schema.
     Args:
@@ -21,7 +21,6 @@ def main(row_data):
     Returns:
         ok (bool), latency (float), result (dict), ground_truth (int)
     """
-
     API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN")
     API_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID") 
     HEADERS = {"Authorization": f"Bearer {API_TOKEN}"}
@@ -31,9 +30,9 @@ def main(row_data):
         tweet = row_data.get('tweet', '')
         ground_truth = int(row_data.get('food_label', 0))
         
-        api_url = f"https://api.cloudflare.com/client/v4/accounts/{API_ACCOUNT_ID}/ai/run/{@cf/meta/llama-3.1-70b-instruct-fp8-fast}"
+        api_url = f"https://api.cloudflare.com/client/v4/accounts/{API_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct-fast"
 
-        # Payload with JSON mode and schema
+        # Payload with JSON mode and schema following FreeFoodEvent structure
         payload = {
             "messages": [
                 {
@@ -41,20 +40,25 @@ def main(row_data):
                     "content": """You are a precise assistant that detects food availability at events from social media posts.
 
 CRITICAL RULES:
-1. Set food_available to true ONLY if the post explicitly mentions food, snacks, drinks, meals, refreshments, or similar items being served/provided.
-2. If food_available is true, extract the location and date_time from the post.
-3. If food_available is false, DO NOT include location or date_time fields in your response at all.
-4. Look for keywords like: food, snacks, pizza, bagels, cookies, lunch, dinner, breakfast, drinks, refreshments, BBQ, burritos, pasta, sandwiches, etc.
-5. Events without food mentions should have food_available set to false.
+1. Extract event information ONLY if the post explicitly mentions food, snacks, drinks, meals, refreshments, or similar items being served/provided.
+2. Look for keywords like: food, snacks, pizza, bagels, cookies, lunch, dinner, breakfast, drinks, refreshments, BBQ, burritos, pasta, sandwiches, etc.
+3. If no food is mentioned, set food_available to false and DO NOT include location, start_time, or title fields.
+4. Extract a clear event title from the post (e.g., "Career Fair at Goodell Lawn" or "Cultural Showcase")
+5. Parse dates and times carefully (format as ISO 8601: YYYY-MM-DDTHH:MM:SS)
+6. Provide a confidence score (0.0-1.0) based on how explicit the food mention is
+7. Include a brief reason explaining your decision
 
 Examples:
-- "Free pizza at the event!" → food_available: true, location: [extract], date_time: [extract]
-- "Join us for a meeting" → food_available: false (no location/time fields)
-- "Come to our workshop, snacks provided!" → food_available: true"""
+- "Free pizza at the career fair today at 2pm in Student Union!" 
+  → food_available: true, title: "Career Fair", location: "Student Union", start_time: "2025-12-03T14:00:00"
+- "Join us for a meeting this Thursday" 
+  → food_available: false (no other fields)
+- "Come to our workshop, snacks provided! Integrative Learning Center on 08/23/2025"
+  → food_available: true, title: "Workshop", location: "Integrative Learning Center", start_time: "2025-08-23T00:00:00" """
                 },
                 {
                     "role": "user", 
-                    "content": tweet
+                    "content": f"Club: {row_data.get('club_name', 'Unknown')}\nTweet: {tweet}"
                 }
             ],
             "response_format": {
@@ -66,16 +70,30 @@ Examples:
                             "type": "boolean",
                             "description": "True only if food/drinks/snacks are explicitly mentioned as being provided"
                         },
+                        "title": {
+                            "type": "string",
+                            "description": "The event title/name. Only include if food_available is true."
+                        },
                         "location": {
                             "type": "string",
-                            "description": "The location where food will be available. Only include if food_available is true."
+                            "description": "The location where the event will take place. Only include if food_available is true."
                         },
-                        "date_time": {
+                        "start_time": {
                             "type": "string",
-                            "description": "The date and time when food will be available. Only include if food_available is true."
+                            "description": "The date and time in ISO 8601 format (YYYY-MM-DDTHH:MM:SS). Only include if food_available is true."
+                        },
+                        "llm_confidence": {
+                            "type": "number",
+                            "description": "Confidence score between 0.0 and 1.0 indicating certainty of food availability detection",
+                            "minimum": 0.0,
+                            "maximum": 1.0
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Brief explanation of why food was or wasn't detected"
                         }
                     },
-                    "required": ["food_available"]
+                    "required": ["food_available", "llm_confidence", "reason"]
                 }
             }
         }
