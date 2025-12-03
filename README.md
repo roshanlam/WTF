@@ -213,6 +213,9 @@ Key configuration variables (see `.env.example`):
 - `DECISION_GATEWAY_PORT`: Decision Gateway port (default: `8100`)
 - `NOTIFICATION_PORT`: Notification service port (default: `8200`)
 
+- `CLOUDFLARE_API_TOKEN`: API Token Created from Cloudflare with permissions to read from Workers AI
+- `CLOUDFLARE_ACCOUNT_ID`: Your Cloudflare Developer Account Number
+
 ## Services
 
 ### API Service
