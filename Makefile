@@ -1,4 +1,4 @@
-.PHONY: help install setup clean test lint format run-api run-llm-agent run-decision-gateway run-mq-consumer run-notification dev check pre-commit-install redis-check redis-start redis-stop redis-clean redis-cli docker-up docker-down docker-logs
+.PHONY: help install setup clean test test-cov test-fast test-verbose lint format run-api run-llm-agent run-decision-gateway run-mq-consumer run-notification dev check pre-commit-install redis-check redis-start redis-stop redis-clean redis-cli docker-up docker-down docker-logs
 
 help:
 	@echo "Available commands:"
@@ -29,8 +29,33 @@ clean:
 	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
 	@echo "Cleanup complete!"
 
-test:
-	poetry run pytest
+test: ## Run all tests
+	@if [ -d "venv" ]; then \
+		. venv/bin/activate && pytest; \
+	else \
+		poetry run pytest; \
+	fi
+
+test-cov: ## Run tests with coverage report
+	@if [ -d "venv" ]; then \
+		. venv/bin/activate && pytest --cov=services --cov-report=term-missing; \
+	else \
+		poetry run pytest --cov=services --cov-report=term-missing; \
+	fi
+
+test-fast: ## Run tests and stop on first failure
+	@if [ -d "venv" ]; then \
+		. venv/bin/activate && pytest -x -q; \
+	else \
+		poetry run pytest -x -q; \
+	fi
+
+test-verbose: ## Run tests with verbose output
+	@if [ -d "venv" ]; then \
+		. venv/bin/activate && pytest -vv; \
+	else \
+		poetry run pytest -vv; \
+	fi
 
 lint:
 	poetry run ruff check .
