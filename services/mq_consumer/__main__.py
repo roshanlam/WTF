@@ -63,9 +63,11 @@ class EventProcessor:
 
             # Log processing latency
             if event.published_at:
-                latency = (
-                    datetime.now(timezone.utc) - event.published_at
-                ).total_seconds()
+                now = datetime.now(timezone.utc)
+                pub_time = event.published_at
+                if pub_time.tzinfo is None:
+                    pub_time = pub_time.replace(tzinfo=timezone.utc)
+                latency = (now - pub_time).total_seconds()
                 logger.info(f"Processing latency: {latency:.3f}s")
 
             # Here you would typically:
@@ -135,3 +137,7 @@ def main():
     finally:
         consumer.close()
         logger.info("MQ Consumer Service stopped.")
+
+
+if __name__ == "__main__":
+    main()
