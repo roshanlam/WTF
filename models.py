@@ -16,4 +16,4 @@ class FreeFoodEvent(BaseModel):
     type: str = "FREE_FOOD_EVENT"
     published_at: datetime
     retries: int = 0
-    metadata: dict[str, Any] = {}
+    metadata: dict[str, Any] = Field(default_factory=dict)
