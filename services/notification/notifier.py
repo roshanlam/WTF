@@ -1,9 +1,7 @@
 import os
 import time
-import csv
 import logging
 import smtplib
-import socket
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from email.mime.text import MIMEText
@@ -12,57 +10,65 @@ from email.mime.base import MIMEBase
 from email import encoders
 from typing import List, Dict, Optional, Any
 from jinja2 import Template
-from dotenv import load_dotenv
-from functools import wraps
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-import logging
 
-# Load environment variables
-load_dotenv()
 
 # Logging setup
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger("notifier")
+logger = logging.getLogger(__name__)
 
-# Configs from .env
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 465))
-SMTP_USER = os.getenv("SMTP_USER")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-CSV_FILE = os.getenv("CSV_FILE", "test_emails.csv")
-DEFAULT_ATTACHMENT = os.getenv("DEFAULT_ATTACHMENT", "assignment.docx")
-RATE_LIMIT_SEC = float(os.getenv("RATE_LIMIT_SEC", 1.0))
-DRY_RUN = os.getenv("DRY_RUN", "true").lower() in ["1", "true", "yes"]
 
-# Retry decorator
-def retry(exceptions=(Exception,), tries=3, delay=1, backoff=2, logger=logger):
-    def deco_retry(f):
-        @wraps(f)
-        def f_retry(*args, **kwargs):
-            _tries, _delay = tries, delay
-            while _tries > 1:
-                try:
-                    return f(*args, **kwargs)
-                except exceptions as e:
-                    logger.warning(f"{e}, Retrying in {_delay} seconds...")
-                    time.sleep(_delay)
-                    _tries -= 1
-                    _delay *= backoff
-            return f(*args, **kwargs)
-        return f_retry
-    return deco_retry
-
-# Abstract notifier
 class Notifier(ABC):
+    """Abstract base class for notification handlers."""
+
     @abstractmethod
-    def notify(self, recipient: str, subject: str, body_html: str, attachments: Optional[List[str]] = None, meta: Optional[Dict[str, Any]] = None) -> bool:
+    def notify(
+        self,
+        recipient: str,
+        subject: str,
+        body_html: str,
+        attachments: Optional[List[str]] = None,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Send a notification to a recipient.
+
+        Args:
+            recipient: Email address of the recipient
+            subject: Email subject line
+            body_html: HTML body content
+            attachments: Optional list of file paths to attach
+            meta: Optional metadata dictionary
+
+        Returns:
+            True if notification was sent successfully, False otherwise
+        """
         pass
 
-@dataclass
-class SMTPNotifier:
-    def __init__(self, smtp_server, smtp_port, smtp_user, smtp_password, use_ssl=True, use_starttls=False, timeout=30, dry_run=False):
+
+class SMTPNotifier(Notifier):
+    """SMTP-based email notifier for sending notifications."""
+
+    def __init__(
+        self,
+        smtp_server: str,
+        smtp_port: int,
+        smtp_user: str,
+        smtp_password: str,
+        use_ssl: bool = True,
+        use_starttls: bool = False,
+        timeout: int = 30,
+        dry_run: bool = False,
+    ):
+        """Initialize SMTP notifier.
+
+        Args:
+            smtp_server: SMTP server hostname
+            smtp_port: SMTP server port
+            smtp_user: SMTP username (typically email address)
+            smtp_password: SMTP password
+            use_ssl: Use SSL connection (default: True)
+            use_starttls: Use STARTTLS for TLS upgrade (default: False)
+            timeout: Connection timeout in seconds
+            dry_run: If True, log notifications without sending
+        """
         self.smtp_server = smtp_server
         self.smtp_port = smtp_port
         self.smtp_user = smtp_user
@@ -72,7 +78,14 @@ class SMTPNotifier:
         self.timeout = timeout
         self.dry_run = dry_run
 
-    def _build_message(self, recipient, subject, body_html, attachments=None):
+    def _build_message(
+        self,
+        recipient: str,
+        subject: str,
+        body_html: str,
+        attachments: Optional[List[str]] = None,
+    ) -> MIMEMultipart:
+        """Build MIME message with optional attachments."""
         msg = MIMEMultipart()
         msg["From"] = self.smtp_user
         msg["To"] = recipient
@@ -81,111 +94,157 @@ class SMTPNotifier:
 
         if attachments:
             for file_path in attachments:
-                with open(file_path, "rb") as f:
-                    part = MIMEBase("application", "octet-stream")
-                    part.set_payload(f.read())
-                    encoders.encode_base64(part)
-                    part.add_header("Content-Disposition", f'attachment; filename="{file_path}"')
-                    msg.attach(part)
+                try:
+                    with open(file_path, "rb") as f:
+                        part = MIMEBase("application", "octet-stream")
+                        part.set_payload(f.read())
+                        encoders.encode_base64(part)
+                        filename = os.path.basename(file_path)
+                        part.add_header(
+                            "Content-Disposition",
+                            f'attachment; filename="{filename}"',
+                        )
+                        msg.attach(part)
+                except Exception as e:
+                    logger.warning(f"Failed to attach file {file_path}: {e}")
 
         return msg
 
-    def notify(self, recipient, subject, body_html, attachments=None, meta=None):
+    def notify(
+        self,
+        recipient: str,
+        subject: str,
+        body_html: str,
+        attachments: Optional[List[str]] = None,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Send email notification.
+
+        Args:
+            recipient: Email address of the recipient
+            subject: Email subject line
+            body_html: HTML body content
+            attachments: Optional list of file paths to attach
+            meta: Optional metadata (not used by SMTP notifier)
+
+        Returns:
+            True if email was sent successfully, False otherwise
+        """
         msg = self._build_message(recipient, subject, body_html, attachments)
-        
+
         if self.dry_run:
-            logging.info(f"[DRY-RUN] Would send email to {recipient} with subject '{subject}'")
+            logger.info(
+                f"[DRY-RUN] Would send email to {recipient} with subject '{subject}'"
+            )
             return True
 
         try:
-            # Gmail requires the use of STARTTLS on port 587
             if self.use_ssl:
-                with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port, timeout=self.timeout) as server:
+                with smtplib.SMTP_SSL(
+                    self.smtp_server, self.smtp_port, timeout=self.timeout
+                ) as server:
                     server.login(self.smtp_user, self.smtp_password)
                     server.sendmail(self.smtp_user, recipient, msg.as_string())
             elif self.use_starttls:
-                with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=self.timeout) as server:
-                    server.ehlo()  # Send the initial EHLO command
-                    server.starttls()  # Upgrade the connection to secure
+                with smtplib.SMTP(
+                    self.smtp_server, self.smtp_port, timeout=self.timeout
+                ) as server:
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
                     server.login(self.smtp_user, self.smtp_password)
                     server.sendmail(self.smtp_user, recipient, msg.as_string())
             else:
                 raise ValueError("Either use_ssl or use_starttls must be True.")
 
-            logging.info(f"Email sent to {recipient}")
+            logger.info(f"Email sent successfully to {recipient}")
             return True
-        except Exception as e:
-            logging.error(f"Error sending email: {e}")
+
+        except smtplib.SMTPAuthenticationError as e:
+            logger.error(f"SMTP authentication failed for {recipient}: {e}")
             return False
+        except smtplib.SMTPException as e:
+            logger.error(f"SMTP error sending email to {recipient}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error sending email to {recipient}: {e}")
+            return False
+
 
 @dataclass
 class NotificationManager:
+    """Manager for coordinating multiple notification handlers.
+
+    This class implements the Observer pattern, allowing multiple
+    notification handlers to be registered and notified simultaneously.
+    """
+
     observers: List[Notifier] = field(default_factory=list)
-    rate_limit_seconds: float = 1.0  
+    rate_limit_seconds: float = 1.0
     last_sent_time: float = field(default=0.0)
 
-    def register(self, notifier: Notifier):
-        logger.debug(f"Registering notifier: {notifier}")
+    def register(self, notifier: Notifier) -> None:
+        """Register a new notification handler.
+
+        Args:
+            notifier: Notifier instance to register
+        """
+        logger.debug(f"Registering notifier: {type(notifier).__name__}")
         self.observers.append(notifier)
 
-    def notify_all(self, recipient: str, subject: str, body_html: str, attachments: Optional[List[str]] = None, meta: Optional[Dict[str, Any]] = None) -> Dict[str, bool]:
+    def notify_all(
+        self,
+        recipient: str,
+        subject: str,
+        body_html: str,
+        attachments: Optional[List[str]] = None,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, bool]:
+        """Send notification through all registered handlers.
+
+        Applies rate limiting between notifications and attempts to send
+        through all registered notifiers.
+
+        Args:
+            recipient: Email address of the recipient
+            subject: Email subject line
+            body_html: HTML body content
+            attachments: Optional list of file paths to attach
+            meta: Optional metadata to pass to handlers
+
+        Returns:
+            Dictionary mapping notifier names to success status
+        """
         results = {}
+
+        # Apply rate limiting
         now = time.time()
         elapsed = now - self.last_sent_time
         if elapsed < self.rate_limit_seconds:
             time.sleep(self.rate_limit_seconds - elapsed)
+
+        # Notify all observers
         for obs in self.observers:
+            notifier_name = type(obs).__name__
             try:
                 ok = obs.notify(recipient, subject, body_html, attachments, meta)
-                results[type(obs).__name__] = ok
+                results[notifier_name] = ok
             except Exception as e:
-                logger.exception(f"Notifier {type(obs).__name__} failed: {e}")
-                results[type(obs).__name__] = False
+                logger.exception(f"Notifier {notifier_name} failed: {e}")
+                results[notifier_name] = False
+
         self.last_sent_time = time.time()
         return results
 
+
 def render_template(template_str: str, context: Dict[str, Any]) -> str:
-    return Template(template_str).render(**context)
+    """Render a Jinja2 template with the given context.
 
-def send_emails_from_csv(csv_path: str, manager: NotificationManager, subject_template: str, body_template: str, default_attachments: Optional[List[str]] = None):
-    if default_attachments is None:
-        default_attachments = []
-    with open(csv_path, newline='') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            recipient = row.get("email")
-            name = row.get("name", "")
-            attachment = row.get("attachment") or None
-            attachments = [attachment] if attachment else default_attachments
-            subject = render_template(subject_template, {"name": name, **row})
-            body_html = render_template(body_template, {"name": name, **row})
-            logger.info(f"Queueing send to: {recipient}")
-            manager.notify_all(recipient, subject, body_html, attachments, meta=row)
-            time.sleep(0.5)
+    Args:
+        template_str: Template string with Jinja2 syntax
+        context: Dictionary of variables to use in template
 
-if __name__ == "__main__":
-    logger.info("Starting Notification System...")
-
-    smtp_notifier = SMTPNotifier(
-        smtp_server=SMTP_SERVER,
-        smtp_port=SMTP_PORT,
-        smtp_user=SMTP_USER,
-        smtp_password=SMTP_PASSWORD,
-        use_ssl=True,
-        dry_run=DRY_RUN
-    )
-
-    manager = NotificationManager(rate_limit_seconds=RATE_LIMIT_SEC)
-    manager.register(smtp_notifier)
-
-    subj_tpl = "Invitation to Showcase Your Creativity, {{ name or 'Candidate' }}"
-    body_tpl = """
-    <html><body>
-      <p>Hello {{ name or 'Candidate' }},</p>
-      <p>Congratulations — please find the assessment attached. You have 7 days to complete it.</p>
-      <p>Warm regards,<br/>Elitecode Hiring Team</p>
-    </body></html>
+    Returns:
+        Rendered template string
     """
-
-    send_emails_from_csv(CSV_FILE, manager, subj_tpl, body_tpl, default_attachments=[DEFAULT_ATTACHMENT])
-    logger.info("All emails queued for sending!")
+    return Template(template_str).render(**context)

@@ -1,14 +1,3 @@
-"""Notification service entrypoint.
-
-This consumer listens to the message queue for `FreeFoodEvent` messages
-and forwards notifications (email) using the `services.notification.notifier`
-helper classes.
-
-Behavior:
-- Reads recipients from `NOTIFICATION_RECIPIENTS` env var (comma-separated).
-- Uses SMTP config from the notifier module (env-driven).
-"""
-
 import logging
 import sys
 from datetime import timezone, datetime
@@ -66,7 +55,9 @@ class NotificationProcessor:
             context = {
                 "title": event.title,
                 "location": event.location,
-                "start_time": event.start_time.isoformat() if event.start_time else None,
+                "start_time": event.start_time.isoformat()
+                if event.start_time
+                else None,
                 "description": event.description,
                 "llm_confidence": event.llm_confidence,
             }
@@ -76,18 +67,25 @@ class NotificationProcessor:
 
             recipients = _get_recipients()
             if not recipients:
-                logger.warning("No recipients configured (NOTIFICATION_RECIPIENTS). Skipping send.")
+                logger.warning(
+                    "No recipients configured (NOTIFICATION_RECIPIENTS). Skipping send."
+                )
                 return
 
             for r in recipients:
-                ok_map = self.manager.notify_all(r, subject, body, attachments=None, meta=event.model_dump())
+                ok_map = self.manager.notify_all(
+                    r, subject, body, attachments=None, meta=event.model_dump()
+                )
                 logger.info(f"Send result for {r}: {ok_map}")
 
             self.events_processed += 1
 
         except Exception as e:
             self.events_failed += 1
-            logger.error(f"Failed to process/notify for event {event.event_id}: {e}", exc_info=True)
+            logger.error(
+                f"Failed to process/notify for event {event.event_id}: {e}",
+                exc_info=True,
+            )
             raise
 
 
@@ -98,8 +96,10 @@ def main():
 
     # Create notifier and manager (notifier reads SMTP config from env)
     smtp = SMTPNotifier(
-        smtp_server=SMTPNotifier.__init__.__defaults__ and SMTPNotifier.__init__.__defaults__[0],
-        smtp_port=SMTPNotifier.__init__.__defaults__ and SMTPNotifier.__init__.__defaults__[1],
+        smtp_server=SMTPNotifier.__init__.__defaults__
+        and SMTPNotifier.__init__.__defaults__[0],
+        smtp_port=SMTPNotifier.__init__.__defaults__
+        and SMTPNotifier.__init__.__defaults__[1],
         smtp_user=None,
         smtp_password=None,
     )
@@ -119,7 +119,9 @@ def main():
             dry_run=getattr(_notifier_mod, "DRY_RUN", False),
         )
     except Exception:
-        logger.exception("Failed to create SMTPNotifier from notifier module; trying basic constructor")
+        logger.exception(
+            "Failed to create SMTPNotifier from notifier module; trying basic constructor"
+        )
 
     manager = NotificationManager(rate_limit_seconds=1.0)
     manager.register(smtp)

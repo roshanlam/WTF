@@ -55,8 +55,8 @@ WTF (Where's The Food) is a microservices-based event-driven system for tracking
 
 ### Notification Service
 - **Port**: 8200
-- **Purpose**: Sends notifications to users
-- **Responsibilities**: Email, SMS, push notifications
+- **Purpose**: Sends email notifications to users
+- **Responsibilities**: Email, Notifications
 
 ## Data Flow
 
