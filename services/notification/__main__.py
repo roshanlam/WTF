@@ -1,7 +1,7 @@
 import os
 import logging
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
@@ -230,15 +230,16 @@ Don't miss out!"""
             logger.error("[NOTIFICATION] No recipient numbers configured for test")
             return
         
-        # Create a test event
+        # Create a test event with all required fields
         test_event = FreeFoodEvent(
             event_id="test_001",
             title="Test Event - Free Pizza",
             location="Computer Science Building",
-            start_time=datetime.now(),
+            start_time=datetime.now(timezone.utc),
             source="Test System",
             llm_confidence=1.0,
-            reason="This is a test notification"
+            reason="This is a test notification",
+            published_at=datetime.now(timezone.utc)
         )
         
         self.send_notification(test_event)

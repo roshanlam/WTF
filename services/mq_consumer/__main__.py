@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from models import FreeFoodEvent
 from services.mq import Consumer
 from services.config import REDIS_URL, MQ_STREAM
-from services.notifications.__main__ import NotificationService
+from services.notification.__main__ import NotificationService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -195,3 +195,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
