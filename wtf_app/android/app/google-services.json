@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "153619037472",
+    "project_id": "wtf-umass",
+    "storage_bucket": "wtf-umass.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:153619037472:android:404bc11d3896f361c86b45",
+        "android_client_info": {
+          "package_name": "com.example.wtf_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "153619037472-a5rad3bjbup0oh6rm6r064vp4klm09q0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.wtf_app",
+            "certificate_hash": "27bad042873f851012e2177a45f0765169cffd0b"
+          }
+        },
+        {
+          "client_id": "153619037472-57vhc6t19gk6t0pmacid2lbdoudtea9q.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBrD3DaZ45SHa6Qzw8HOw-fNEXcv8Xhc00"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "153619037472-57vhc6t19gk6t0pmacid2lbdoudtea9q.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "153619037472-8oc81vqrmjcj989hvje6u075ip13jrm4.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.wtfApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
