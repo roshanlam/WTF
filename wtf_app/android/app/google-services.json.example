@@ -1,0 +1,17 @@
+{
+  "project_info": {
+    "project_number": "YOUR_PROJECT_NUMBER",
+    "project_id": "your-project-id",
+    "storage_bucket": "your-project.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "YOUR_MOBILE_SDK_APP_ID",
+        "android_client_info": {
+          "package_name": "com.example.wtf_app"
+        }
+      }
+    }
+  ]
+}

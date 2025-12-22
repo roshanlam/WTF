@@ -70,6 +70,9 @@ pre-commit-install:
 	poetry run pre-commit install
 	@echo "Pre-commit hooks installed!"
 
+run-scraper:
+	poetry run scrape
+
 run-api:
 	poetry run api
 
