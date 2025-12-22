@@ -19,6 +19,18 @@ dependencies:
   # Secure storage for user data
   flutter_secure_storage: ^9.0.0
 
+  # Google Maps requester.
+  google_maps_flutter: ^2.5.3
+  geolocator: ^10.1.0
+  permission_handler: ^11.1.0
+
+  add_2_calendar: ^3.0.1
+  url_launcher: ^6.2.2
+  map_launcher: ^3.0.1
+
+  share_plus: ^7.2.2
+  flutter_contacts: ^1.1.7+1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

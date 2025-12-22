@@ -59,5 +59,37 @@
 
 	<key>GIDClientID</key>
 	<string>153619037472-8oc81vqrmjcj989hvje6u075ip13jrm4.apps.googleusercontent.com</string>
+
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We need your location to show nearby free food events on the map</string>
+
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>We need your location to show nearby free food events on the map</string>
+
+	<!-- Calendar permission -->
+	<key>NSCalendarsUsageDescription</key>
+	<string>We need access to add free food events to your calendar</string>
+
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>We need full access to add events to your calendar</string>
+	<!-- URL schemes for opening maps -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>whatsapp</string>
+		<string>instagram</string>
+		<string>twitter</string>
+		<string>sms</string>
+		<string>comgooglemaps</string>
+		<string>baidumap</string>
+		<string>iosamap</string>
+		<string>waze</string>
+		<string>yandexmaps</string>
+		<string>uber</string>
+		<string>lyft</string>
+		<string>citymapper</string>
+		<string>mapswithme</string>
+		<string>osmandmaps</string>
+		<string>dgis</string>
+	</array>
 </dict>
 </plist>
