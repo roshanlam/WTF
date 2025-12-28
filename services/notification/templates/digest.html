@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ digest_title }}</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 600px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        .header .emoji {
+            font-size: 48px;
+            display: block;
+            margin-bottom: 10px;
+        }
+        .header .subtitle {
+            margin-top: 10px;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px 20px;
+        }
+        .summary {
+            background-color: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 0 0 25px 0;
+            border-radius: 4px;
+        }
+        .summary p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        .event-card {
+            background-color: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 20px;
+            margin: 20px 0;
+            transition: box-shadow 0.2s ease;
+        }
+        .event-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .event-header {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+        .event-number {
+            background-color: #667eea;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 4px;
+            margin-right: 12px;
+            min-width: 30px;
+            text-align: center;
+        }
+        .event-title {
+            flex: 1;
+            color: #2c3e50;
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+        }
+        .event-info {
+            margin: 10px 0 10px 42px;
+        }
+        .info-row {
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
+            font-size: 14px;
+        }
+        .info-icon {
+            font-size: 16px;
+            margin-right: 8px;
+            min-width: 20px;
+        }
+        .info-text {
+            color: #555;
+        }
+        .event-description {
+            margin: 15px 0 0 42px;
+            padding: 12px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            font-size: 14px;
+            color: #666;
+            line-height: 1.6;
+        }
+        .confidence-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .confidence-high {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .confidence-medium {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .confidence-low {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .no-events {
+            text-align: center;
+            padding: 40px 20px;
+            color: #888;
+        }
+        .no-events .emoji {
+            font-size: 64px;
+            display: block;
+            margin-bottom: 15px;
+        }
+        .footer {
+            background-color: #f9f9f9;
+            padding: 20px;
+            text-align: center;
+            border-top: 1px solid #e0e0e0;
+        }
+        .footer p {
+            margin: 5px 0;
+            font-size: 12px;
+            color: #888;
+        }
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        .divider {
+            height: 1px;
+            background: linear-gradient(to right, transparent, #e0e0e0, transparent);
+            margin: 25px 0;
+        }
+        @media only screen and (max-width: 600px) {
+            .container {
+                margin: 0;
+                border-radius: 0;
+            }
+            .header {
+                padding: 20px 15px;
+            }
+            .content {
+                padding: 20px 15px;
+            }
+            .event-card {
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <span class="emoji">📬</span>
+            <h1>{{ digest_title }}</h1>
+            <div class="subtitle">{{ period_description }}</div>
+        </div>
+
+        <div class="content">
+            {% if events|length > 0 %}
+                <div class="summary">
+                    <p><strong>📊 Summary:</strong> {{ events|length }} free food event{% if events|length != 1 %}s{% endif %} found</p>
+                    <p><strong>📅 Period:</strong> {{ period_description }}</p>
+                </div>
+
+                {% for event in events %}
+                    <div class="event-card">
+                        <div class="event-header">
+                            <div class="event-number">#{{ loop.index }}</div>
+                            <h3 class="event-title">{{ event.title }}</h3>
+                        </div>
+
+                        <div class="event-info">
+                            <div class="info-row">
+                                <span class="info-icon">📍</span>
+                                <span class="info-text">{{ event.location or 'Location TBD' }}</span>
+                            </div>
+
+                            {% if event.start_time %}
+                            <div class="info-row">
+                                <span class="info-icon">🕐</span>
+                                <span class="info-text">{{ event.start_time }}</span>
+                            </div>
+                            {% endif %}
+
+                            {% if event.llm_confidence is not none %}
+                            <div class="info-row">
+                                <span class="info-icon">🎯</span>
+                                <span class="info-text">
+                                    {% set confidence_pct = (event.llm_confidence * 100)|round|int %}
+                                    {% if confidence_pct >= 80 %}
+                                        <span class="confidence-badge confidence-high">{{ confidence_pct }}%</span>
+                                    {% elif confidence_pct >= 50 %}
+                                        <span class="confidence-badge confidence-medium">{{ confidence_pct }}%</span>
+                                    {% else %}
+                                        <span class="confidence-badge confidence-low">{{ confidence_pct }}%</span>
+                                    {% endif %}
+                                </span>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        {% if event.description %}
+                        <div class="event-description">
+                            {{ event.description }}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    {% if not loop.last %}
+                    <div class="divider"></div>
+                    {% endif %}
+                {% endfor %}
+            {% else %}
+                <div class="no-events">
+                    <span class="emoji">🔍</span>
+                    <p>No free food events found during this period.</p>
+                    <p style="color: #aaa; margin-top: 10px;">We'll keep looking and notify you when something pops up!</p>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="footer">
+            <p>This digest was generated by the WTF Free Food Detection System</p>
+            <p>
+                <a href="{{ unsubscribe_url }}">Manage preferences</a> •
+                <a href="{{ feedback_url }}">Report issue</a>
+            </p>
+            <p style="margin-top: 15px; color: #aaa;">
+                Powered by AI • Delivered with ❤️
+            </p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,16 +1,21 @@
+import asyncio
 import logging
 import sys
 import os
 from datetime import timezone, datetime
-from typing import List
+from typing import List, Dict, Any
 
 from models import FreeFoodEvent
 from services.mq import Consumer
 from services.config import REDIS_URL, MQ_STREAM
-from services.notification.notifier import (
-    SMTPNotifier,
-    NotificationManager,
-    render_template,
+from services.notification.async_email import (
+    create_email_provider,
+    BatchEmailProcessor,
+    EmailMessage,
+)
+from services.notification.email_templates import (
+    EmailTemplateManager,
+    UserPreferenceFilter,
 )
 
 logging.basicConfig(
@@ -22,110 +27,134 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _get_recipients() -> List[str]:
-    """Get recipients from database or environment variable."""
-    # First try database
+def _get_users_with_preferences() -> List[Dict[str, Any]]:
+    """
+    Get users with their preferences from database.
+
+    Returns:
+        List of user dictionaries with email and preferences
+    """
+    users = []
+
+    # Try Supabase first
+    try:
+        from services.supabase_client import get_supabase_client
+
+        supabase = get_supabase_client()
+
+        # Get active users with their preferences
+        response = (
+            supabase.table("user_profiles")
+            .select("id, email, notification_enabled, user_preferences(*)")
+            .eq("notification_enabled", True)
+            .execute()
+        )
+
+        if response.data:
+            for user in response.data:
+                prefs = user.get("user_preferences", [])
+                user_prefs = prefs[0] if prefs else {}
+
+                users.append(
+                    {
+                        "id": user["id"],
+                        "email": user["email"],
+                        "preferences": user_prefs,
+                    }
+                )
+
+            logger.info(f"Loaded {len(users)} users from Supabase")
+            return users
+
+    except Exception as e:
+        logger.warning(f"Failed to read from Supabase: {e}")
+
+    # Fallback to legacy database
     try:
         from services.database import get_active_users
 
-        recipients = get_active_users()
-        if recipients:
-            logger.info(f"Loaded {len(recipients)} subscribers from database")
-            return recipients
+        emails = get_active_users()
+        if emails:
+            users = [
+                {
+                    "email": email,
+                    "preferences": {},  # No preferences in legacy DB
+                }
+                for email in emails
+            ]
+            logger.info(f"Loaded {len(users)} users from legacy database")
+            return users
     except Exception as e:
-        logger.warning(f"Failed to read subscribers from database: {e}")
+        logger.warning(f"Failed to read from legacy database: {e}")
 
     # Fallback to environment variable
     raw = os.environ.get("NOTIFICATION_RECIPIENTS", "")
-    if not raw:
-        return []
-    return [r.strip() for r in raw.split(",") if r.strip()]
+    if raw:
+        emails = [r.strip() for r in raw.split(",") if r.strip()]
+        users = [{"email": email, "preferences": {}} for email in emails]
+        logger.info(f"Loaded {len(users)} users from environment")
+        return users
+
+    logger.warning("No users found from any source")
+    return []
 
 
-def _get_smtp_config() -> dict:
-    """Get SMTP configuration from environment variables."""
+def _get_email_config() -> dict:
+    """Get Gmail SMTP configuration from environment variables."""
     return {
-        "smtp_server": os.environ.get("SMTP_SERVER", "smtp.gmail.com"),
-        "smtp_port": int(os.environ.get("SMTP_PORT", "465")),
-        "smtp_user": os.environ.get("SMTP_USER", ""),
-        "smtp_password": os.environ.get("SMTP_PASSWORD", ""),
+        "host": os.environ.get("SMTP_SERVER", "smtp.gmail.com"),
+        "port": int(os.environ.get("SMTP_PORT", "465")),
+        "username": os.environ.get("SMTP_USER", ""),
+        "password": os.environ.get("SMTP_PASSWORD", ""),
         "use_ssl": os.environ.get("USE_SSL", "true").lower() == "true",
-        "use_starttls": os.environ.get("USE_STARTTLS", "false").lower() == "true",
-        "dry_run": os.environ.get("DRY_RUN", "false").lower() == "true",
+        "use_tls": os.environ.get("USE_STARTTLS", "false").lower() == "true",
+        "from_email": os.environ.get("SMTP_USER", ""),
     }
 
 
-class NotificationProcessor:
-    def __init__(self, manager: NotificationManager):
-        self.manager = manager
+def _get_batch_config() -> dict:
+    """Get batch processing configuration from environment variables."""
+    return {
+        "batch_size": int(os.environ.get("EMAIL_BATCH_SIZE", "100")),
+        "max_concurrent_batches": int(
+            os.environ.get("EMAIL_MAX_CONCURRENT_BATCHES", "10")
+        ),
+        "rate_limit_per_second": float(
+            os.environ.get("EMAIL_RATE_LIMIT_PER_SECOND", "10.0")
+        ),
+        "max_retries": int(os.environ.get("EMAIL_MAX_RETRIES", "3")),
+    }
+
+
+class AsyncNotificationProcessor:
+    """Async notification processor with batch email delivery."""
+
+    def __init__(
+        self,
+        email_processor: BatchEmailProcessor,
+        template_manager: EmailTemplateManager,
+    ):
+        self.email_processor = email_processor
+        self.template_manager = template_manager
         self.events_processed = 0
         self.events_failed = 0
+        self.emails_sent = 0
+        self.emails_failed = 0
         self.start_time = datetime.now(timezone.utc)
 
     def process_event(self, event: FreeFoodEvent) -> None:
+        """
+        Process event synchronously (called by MQ consumer).
+
+        This is a sync wrapper around async processing.
+        """
         try:
             logger.info(
                 f"Processing event {event.event_id} — {event.title} @ {event.location}"
             )
 
-            subject_tpl = "🍕 Free Food Alert: {{ title }} at {{ location or 'TBD' }}"
-            body_tpl = """
-<html>
-<body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-    <div style="background-color: #4CAF50; color: white; padding: 20px; text-align: center;">
-        <h2>🍕 Free Food Event!</h2>
-    </div>
-    <div style="padding: 20px; background-color: #f9f9f9;">
-        <h3 style="color: #333;">{{ title }}</h3>
-
-        <div style="background-color: white; padding: 15px; border-radius: 5px; margin: 10px 0;">
-            <p style="margin: 5px 0;"><strong>📍 Location:</strong> {{ location or 'TBD' }}</p>
-            <p style="margin: 5px 0;"><strong>🕐 Time:</strong> {{ start_time or 'TBD' }}</p>
-            <p style="margin: 5px 0;"><strong>🎯 Confidence:</strong> {{ (llm_confidence * 100)|round }}%</p>
-        </div>
-
-        {% if description %}
-        <div style="background-color: white; padding: 15px; border-radius: 5px; margin: 10px 0;">
-            <p><strong>Details:</strong></p>
-            <p style="color: #666;">{{ description }}</p>
-        </div>
-        {% endif %}
-
-        <div style="margin-top: 20px; padding: 10px; background-color: #e8f5e9; border-left: 4px solid #4CAF50;">
-            <p style="margin: 5px 0; font-size: 12px; color: #666;">
-                This alert was generated by the Free Food Detection System
-            </p>
-        </div>
-    </div>
-</body>
-</html>
-            """
-
-            context = {
-                "title": event.title,
-                "location": event.location,
-                "start_time": event.start_time.strftime("%A, %B %d at %I:%M %p")
-                if event.start_time
-                else None,
-                "description": event.description,
-                "llm_confidence": event.llm_confidence or 0.0,
-            }
-
-            subject = render_template(subject_tpl, context)
-            body = render_template(body_tpl, context)
-
-            recipients = _get_recipients()
-            if not recipients:
-                logger.warning(
-                    "No recipients configured (NOTIFICATION_RECIPIENTS). Skipping send."
-                )
-                return
-
-            for r in recipients:
-                ok_map = self.manager.notify_all(
-                    r, subject, body, attachments=None, meta=event.model_dump()
-                )
-                logger.info(f"Send result for {r}: {ok_map}")
+            # Run async processing
+            asyncio.run(self._process_event_async(event))
 
             self.events_processed += 1
 
@@ -137,41 +166,138 @@ class NotificationProcessor:
             )
             raise
 
+    async def _process_event_async(self, event: FreeFoodEvent) -> None:
+        """Process event and send notifications asynchronously."""
+
+        # Get users with preferences
+        users = _get_users_with_preferences()
+
+        if not users:
+            logger.warning("No users found. Skipping notification.")
+            return
+
+        # Convert event to dict
+        event_dict = event.model_dump()
+
+        # Filter users based on preferences
+        filtered_users = []
+        for user in users:
+            if UserPreferenceFilter.should_send_notification(
+                user.get("preferences", {}), event_dict
+            ):
+                filtered_users.append(user)
+            else:
+                logger.debug(f"Skipping user {user['email']} based on preferences")
+
+        if not filtered_users:
+            logger.info("No users match notification criteria after filtering")
+            return
+
+        logger.info(
+            f"Sending to {len(filtered_users)}/{len(users)} users after preference filtering"
+        )
+
+        # Render email template
+        rendered = self.template_manager.render_single_event(event_dict)
+
+        # Create email messages for all recipients
+        messages = []
+        for user in filtered_users:
+            messages.append(
+                EmailMessage(
+                    to=user["email"],
+                    subject=rendered["subject"],
+                    html_body=rendered["html"],
+                    metadata=event_dict,
+                    notification_id=None,  # TODO: Create notification record
+                )
+            )
+
+        # Send emails in batches
+        logger.info(f"Sending {len(messages)} emails in batches...")
+
+        results = await self.email_processor.send_all(messages)
+
+        # Count results
+        success_count = sum(1 for r in results if r.success)
+        failed_count = len(results) - success_count
+
+        self.emails_sent += success_count
+        self.emails_failed += failed_count
+
+        logger.info(
+            f"✓ Event {event.event_id} processed: {success_count} sent, {failed_count} failed"
+        )
+
+        # TODO: Update notification records in database
+        # TODO: Mark event as notified
+
 
 def main():
-    logger.info("Starting Notification Service")
+    logger.info("=" * 60)
+    logger.info("Starting Async Notification Service")
+    logger.info("=" * 60)
     logger.info(f"Redis URL: {REDIS_URL}")
     logger.info(f"Stream: {MQ_STREAM}")
 
-    # Get SMTP configuration from environment
-    smtp_config = _get_smtp_config()
+    # Get Gmail SMTP configuration
+    email_config = _get_email_config()
+    batch_config = _get_batch_config()
 
-    logger.info(f"SMTP Server: {smtp_config['smtp_server']}")
-    logger.info(f"SMTP Port: {smtp_config['smtp_port']}")
-    logger.info(f"SMTP User: {smtp_config['smtp_user']}")
-    logger.info(f"Use SSL: {smtp_config['use_ssl']}")
-    logger.info(f"Dry Run: {smtp_config['dry_run']}")
+    logger.info("Email Provider: Gmail SMTP")
+    logger.info(f"SMTP Server: {email_config['host']}:{email_config['port']}")
+    logger.info(f"SMTP User: {email_config['username']}")
+    logger.info(f"Use SSL: {email_config['use_ssl']}")
 
-    # Check if SMTP credentials are configured
-    if not smtp_config["smtp_user"] or not smtp_config["smtp_password"]:
-        logger.warning("⚠️  SMTP_USER or SMTP_PASSWORD not set in environment!")
-        logger.warning("⚠️  Emails will fail to send. Please configure your .env file.")
-        logger.warning("⚠️  Set DRY_RUN=true to test without sending emails.")
+    # Check credentials
+    if not email_config["username"] or not email_config["password"]:
+        logger.warning("⚠️  SMTP_USER or SMTP_PASSWORD not set!")
+        logger.warning("⚠️  Emails will fail to send.")
+        logger.warning("⚠️  Please configure Gmail app password in .env file.")
+        logger.warning(
+            "⚠️  Learn how: https://support.google.com/accounts/answer/185833"
+        )
 
-    # Create SMTP notifier with configuration
+    logger.info(f"Batch Size: {batch_config['batch_size']}")
+    logger.info(f"Max Concurrent Batches: {batch_config['max_concurrent_batches']}")
+    logger.info(f"Rate Limit: {batch_config['rate_limit_per_second']} emails/sec")
+    logger.info(f"Max Retries: {batch_config['max_retries']}")
+
+    # Create Gmail SMTP provider
     try:
-        smtp = SMTPNotifier(**smtp_config)
-        logger.info("✅ SMTPNotifier created successfully")
+        provider = create_email_provider(**email_config)
+        logger.info("✅ Gmail SMTP provider created")
     except Exception as e:
-        logger.error(f"❌ Failed to create SMTPNotifier: {e}")
-        logger.error("Check your SMTP configuration in .env file")
+        logger.error(f"❌ Failed to create Gmail SMTP provider: {e}")
+        logger.error("Check your Gmail configuration in .env file")
         sys.exit(1)
 
-    manager = NotificationManager(rate_limit_seconds=1.0)
-    manager.register(smtp)
+    # Create batch processor
+    try:
+        email_processor = BatchEmailProcessor(provider, **batch_config)
+        logger.info("✅ Batch email processor created")
+    except Exception as e:
+        logger.error(f"❌ Failed to create batch processor: {e}")
+        sys.exit(1)
 
-    processor = NotificationProcessor(manager=manager)
+    # Create template manager
+    try:
+        template_manager = EmailTemplateManager()
+        logger.info("✅ Email template manager created")
+    except Exception as e:
+        logger.error(f"❌ Failed to create template manager: {e}")
+        logger.error(
+            "Check that template files exist in services/notification/templates/"
+        )
+        sys.exit(1)
 
+    # Create notification processor
+    processor = AsyncNotificationProcessor(
+        email_processor=email_processor,
+        template_manager=template_manager,
+    )
+
+    # Create message queue consumer
     consumer = Consumer(
         redis_url=REDIS_URL,
         stream_name=MQ_STREAM,
@@ -179,24 +305,51 @@ def main():
         consumer_name="notification_worker",
     )
 
+    logger.info("=" * 60)
+    logger.info("✅ Notification service ready — waiting for events...")
+    logger.info("=" * 60)
+
     try:
-        logger.info("Notification service ready — waiting for events...")
+        # Start consuming messages
         consumer.consume(handler=processor.process_event, block=5000, count=10)
 
     except KeyboardInterrupt:
+        logger.info("\n" + "=" * 60)
         logger.info("Shutting down notification service (keyboard interrupt)")
+
+        # Print statistics
+        runtime = (datetime.now(timezone.utc) - processor.start_time).total_seconds()
+
         stats = {
+            "runtime_seconds": round(runtime, 2),
             "events_processed": processor.events_processed,
             "events_failed": processor.events_failed,
+            "emails_sent": processor.emails_sent,
+            "emails_failed": processor.emails_failed,
+            "avg_emails_per_event": (
+                round(processor.emails_sent / processor.events_processed, 2)
+                if processor.events_processed > 0
+                else 0
+            ),
         }
+
         logger.info(f"Final stats: {stats}")
+        logger.info("=" * 60)
 
     except Exception as e:
         logger.error(f"Fatal error in notification service: {e}", exc_info=True)
         sys.exit(1)
 
     finally:
+        # Cleanup
+        try:
+            asyncio.run(email_processor.close())
+            logger.info("✅ Email processor closed")
+        except Exception as e:
+            logger.warning(f"Error closing email processor: {e}")
+
         consumer.close()
+        logger.info("✅ Consumer closed")
         logger.info("Notification service stopped")
 
 
