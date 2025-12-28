@@ -24,6 +24,9 @@ matplotlib = "^3.10.7"
 dotenv = "^0.9.9"
 twilio = "^9.8.8"
 jinja2 = "^3.1.6"
+supabase = "^2.0.0"
+pydantic = "^2.0.0"
+google-genai = "^1.56.0"
 
 
 [tool.poetry.group.dev.dependencies]

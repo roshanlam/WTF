@@ -1,4 +1,4 @@
-.PHONY: help install setup clean test test-cov test-fast test-verbose lint format run-api run-llm-agent run-decision-gateway run-mq-consumer run-notification dev check pre-commit-install redis-check redis-start redis-stop redis-clean redis-cli docker-up docker-down docker-logs
+.PHONY: help install setup clean test test-cov test-fast test-verbose lint format run-api run-llm-agent run-decision-gateway run-mq-consumer run-notification run-subscription-api dev check pre-commit-install redis-check redis-start redis-stop redis-clean redis-cli docker-up docker-down docker-logs docker-build docker-init seed-db db-stats
 
 help:
 	@echo "Available commands:"
@@ -85,6 +85,9 @@ run-mq-consumer:
 run-notification:
 	poetry run notification
 
+run-subscription-api: ## Run the subscription API server
+	poetry run python -m services.subscription_api
+
 redis-check: ## Check if Redis is running and accessible
 	@echo "Checking Redis connection..."
 	@redis-cli ping > /dev/null 2>&1 && echo "✓ Redis is running and accessible on localhost:6379" || \
@@ -122,6 +125,22 @@ docker-down: ## Stop all Docker Compose services
 
 docker-logs: ## View Docker Compose logs
 	docker-compose logs -f
+
+docker-build: ## Build all Docker images
+	@echo "Building all Docker images..."
+	docker-compose build
+	@echo "✓ Docker images built"
+
+docker-init: ## Initialize database in Docker
+	@echo "Initializing database in Docker container..."
+	docker-compose exec subscription-api python scripts/seed_database.py
+	@echo "✓ Database initialized"
+
+seed-db: ## Seed database with events (local)
+	poetry run python scripts/seed_database.py
+
+db-stats: ## Show database statistics
+	@poetry run python -c "from services.database import get_stats; import json; print(json.dumps(get_stats(), indent=2))"
 
 dev:
 	@echo "Services defined in this project:"

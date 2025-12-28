@@ -1,11 +1,36 @@
 import json
 import logging
+import os
 from typing import Any, Callable, Optional
 from redis import Redis
+from redis.connection import ConnectionPool
 from models import FreeFoodEvent
 from services.config import REDIS_URL, MQ_STREAM
 
 logger = logging.getLogger(__name__)
+
+# Global connection pool for Redis (shared across all instances)
+REDIS_POOL_SIZE = int(os.getenv("REDIS_POOL_SIZE", "50"))
+REDIS_POOL_TIMEOUT = int(os.getenv("REDIS_POOL_TIMEOUT", "30"))
+
+_redis_pool: Optional[ConnectionPool] = None
+
+
+def get_redis_pool() -> ConnectionPool:
+    """Get or create Redis connection pool."""
+    global _redis_pool
+    if _redis_pool is None:
+        _redis_pool = ConnectionPool.from_url(
+            REDIS_URL,
+            max_connections=REDIS_POOL_SIZE,
+            socket_timeout=REDIS_POOL_TIMEOUT,
+            socket_connect_timeout=10,
+            decode_responses=True,
+        )
+        logger.info(
+            f"✅ Created Redis connection pool (size={REDIS_POOL_SIZE}, timeout={REDIS_POOL_TIMEOUT}s)"
+        )
+    return _redis_pool
 
 
 class MessageQueue:
@@ -17,7 +42,7 @@ class MessageQueue:
     @property
     def client(self) -> Redis:
         if self._client is None:
-            self._client = Redis.from_url(self.redis_url, decode_responses=True)
+            self._client = Redis(connection_pool=get_redis_pool())
         return self._client
 
     def publish(self, event: FreeFoodEvent) -> str:
@@ -50,7 +75,7 @@ class Consumer:
     @property
     def client(self) -> Redis:
         if self._client is None:
-            self._client = Redis.from_url(self.redis_url, decode_responses=True)
+            self._client = Redis(connection_pool=get_redis_pool())
             self._ensure_consumer_group()
         return self._client
 

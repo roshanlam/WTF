@@ -14,6 +14,216 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - wtf-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  subscription-api:
+    build:
+      context: .
+      dockerfile: services/subscription_api/Dockerfile
+    container_name: wtf-subscription-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_PATH=/app/data/wtf.db
+      - API_PORT=8000
+      - REDIS_URL=redis://redis:6379/0
+      - CACHE_ACTIVE_USERS_TTL=${CACHE_ACTIVE_USERS_TTL:-300}
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-50}
+      - REDIS_POOL_TIMEOUT=${REDIS_POOL_TIMEOUT:-30}
+    volumes:
+      - db-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - wtf-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    container_name: wtf-api
+    environment:
+      - DATABASE_PATH=/app/data/wtf.db
+      - REDIS_URL=redis://redis:6379/0
+      - MQ_STREAM=events.free-food
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+      - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}
+      - CACHE_ACTIVE_USERS_TTL=${CACHE_ACTIVE_USERS_TTL:-300}
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-50}
+      - REDIS_POOL_TIMEOUT=${REDIS_POOL_TIMEOUT:-30}
+    volumes:
+      - db-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - wtf-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  decision-gateway:
+    build:
+      context: .
+      dockerfile: services/decision_gateway/Dockerfile
+    container_name: wtf-decision-gateway
+    environment:
+      - DATABASE_PATH=/app/data/wtf.db
+      - REDIS_URL=redis://redis:6379/0
+      - MQ_STREAM=events.free-food
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+      - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}
+      - CACHE_ACTIVE_USERS_TTL=${CACHE_ACTIVE_USERS_TTL:-300}
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-50}
+      - REDIS_POOL_TIMEOUT=${REDIS_POOL_TIMEOUT:-30}
+    volumes:
+      - db-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - wtf-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  llm-agent:
+    build:
+      context: .
+      dockerfile: services/llm_agent/Dockerfile
+    container_name: wtf-llm-agent
+    environment:
+      - DATABASE_PATH=/app/data/wtf.db
+      - REDIS_URL=redis://redis:6379/0
+      - MQ_STREAM=events.free-food
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+      - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}
+      - CACHE_ACTIVE_USERS_TTL=${CACHE_ACTIVE_USERS_TTL:-300}
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-50}
+      - REDIS_POOL_TIMEOUT=${REDIS_POOL_TIMEOUT:-30}
+    volumes:
+      - db-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - wtf-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  mq-consumer:
+    build:
+      context: .
+      dockerfile: services/mq_consumer/Dockerfile
+    container_name: wtf-mq-consumer
+    environment:
+      - DATABASE_PATH=/app/data/wtf.db
+      - REDIS_URL=redis://redis:6379/0
+      - MQ_STREAM=events.free-food
+      - CACHE_ACTIVE_USERS_TTL=${CACHE_ACTIVE_USERS_TTL:-300}
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-50}
+      - REDIS_POOL_TIMEOUT=${REDIS_POOL_TIMEOUT:-30}
+    volumes:
+      - db-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - wtf-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  notification:
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
+    container_name: wtf-notification
+    environment:
+      - DATABASE_PATH=/app/data/wtf.db
+      - REDIS_URL=redis://redis:6379/0
+      - MQ_STREAM=events.free-food
+      - SMTP_SERVER=${SMTP_SERVER:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-465}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - USE_SSL=${USE_SSL:-true}
+      - USE_STARTTLS=${USE_STARTTLS:-false}
+      - DRY_RUN=${DRY_RUN:-true}
+      - CACHE_ACTIVE_USERS_TTL=${CACHE_ACTIVE_USERS_TTL:-300}
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-50}
+      - REDIS_POOL_TIMEOUT=${REDIS_POOL_TIMEOUT:-30}
+    volumes:
+      - db-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - wtf-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+networks:
+  wtf-network:
+    driver: bridge
 
 volumes:
   redis-data:
+  db-data:

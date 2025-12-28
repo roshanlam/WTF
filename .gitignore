@@ -215,3 +215,16 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 .env
+
+# Project-specific
+wtf.db
+*.db
+*.sqlite
+*.sqlite3
+subscribers.csv
+*.csv
+*.pdf
+test_*.py
+scratch/
+temp/
+tmp/
