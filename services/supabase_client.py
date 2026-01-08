@@ -11,9 +11,18 @@ from supabase import Client, create_client  # type: ignore[attr-defined]
 logger = logging.getLogger(__name__)
 
 # Supabase configuration
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+# SUPABASE_API_URL should be the API URL (https://xxx.supabase.co), NOT the postgres connection string
+SUPABASE_URL = os.getenv("SUPABASE_API_URL") or os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")  # Service role for backend
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")  # Public anon key for client
+
+# Validate URL format (should start with https://, not postgresql://)
+if SUPABASE_URL and SUPABASE_URL.startswith("postgresql://"):
+    logger.warning(
+        "SUPABASE_URL appears to be a postgres connection string. "
+        "Set SUPABASE_API_URL to your Supabase API URL (https://xxx.supabase.co)"
+    )
+    SUPABASE_URL = ""  # Clear invalid URL
 
 # Global Supabase client
 _supabase: Optional[Client] = None

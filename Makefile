@@ -88,6 +88,18 @@ run-notification:
 run-subscription-api: ## Run the subscription API server
 	poetry run python -m services.subscription_api
 
+run-spider: ## Run the spider with default seed URLs
+	poetry run spider --all-defaults
+
+run-spider-url: ## Run spider on a specific URL (usage: make run-spider-url URL=https://events.umass.edu)
+	poetry run spider $(URL)
+
+run-spider-no-db: ## Run spider without saving to database
+	poetry run spider --all-defaults --no-db
+
+test-spider: ## Run spider unit tests
+	poetry run python scripts/test_spider.py
+
 redis-check: ## Check if Redis is running and accessible
 	@echo "Checking Redis connection..."
 	@redis-cli ping > /dev/null 2>&1 && echo "✓ Redis is running and accessible on localhost:6379" || \
@@ -149,6 +161,13 @@ dev:
 	@echo "  - decision-gateway (port 8100)"
 	@echo "  - mq-consumer"
 	@echo "  - notification (port 8200)"
+	@echo "  - spider (web crawler)"
 	@echo ""
 	@echo "Use 'make run-<service-name>' to start a service"
 	@echo "Example: make run-api"
+	@echo ""
+	@echo "Spider commands:"
+	@echo "  make run-spider          - Run spider with default URLs"
+	@echo "  make run-spider-url URL=... - Run spider on specific URL"
+	@echo "  make run-spider-no-db    - Run without database"
+	@echo "  make test-spider         - Run spider tests"

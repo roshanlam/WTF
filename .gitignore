@@ -222,9 +222,17 @@ wtf.db
 *.sqlite
 *.sqlite3
 subscribers.csv
-*.csv
 *.pdf
-test_*.py
 scratch/
 temp/
 tmp/
+
+# Generated output files
+free_food_events.json
+
+# Keep sample_events.csv but ignore other CSVs (uncomment if needed)
+# *.csv
+
+# IDE
+.claude/
+.cursor/
