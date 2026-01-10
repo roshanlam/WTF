@@ -85,6 +85,9 @@ run-mq-consumer:
 run-notification:
 	poetry run notification
 
+run-scraper:
+	poetry run scrape
+
 run-subscription-api: ## Run the subscription API server
 	poetry run python -m services.subscription_api
 
