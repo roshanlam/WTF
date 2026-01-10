@@ -20,14 +20,34 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-# Load environment variables
-export $(cat .env | grep -v '^#' | xargs)
+# Load environment variables (safely handles special characters like @ in emails)
+while IFS= read -r line || [[ -n "$line" ]]; do
+    # Skip empty lines and comments
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    # Skip lines without = sign
+    [[ ! "$line" =~ = ]] && continue
+    # Extract key (everything before first =) and value (everything after first =)
+    key="${line%%=*}"
+    value="${line#*=}"
+    # Remove leading/trailing whitespace from key
+    key=$(echo "$key" | tr -d '[:space:]')
+    # Skip if key is empty
+    [[ -z "$key" ]] && continue
+    # Export the variable
+    export "$key=$value"
+done < .env
 
-# Check if SUPABASE_DB_URL is set
+# Check if SUPABASE_DB_URL is set (also accept SUPABASE_URL as fallback)
 if [ -z "$SUPABASE_DB_URL" ]; then
-    echo -e "${RED}Error: SUPABASE_DB_URL not set in .env${NC}"
-    echo "Get it from: Supabase Dashboard > Project Settings > Database > Connection string"
-    exit 1
+    if [ -n "$SUPABASE_URL" ] && [[ "$SUPABASE_URL" == postgresql://* ]]; then
+        # SUPABASE_URL contains the DB connection string
+        export SUPABASE_DB_URL="$SUPABASE_URL"
+        echo -e "${YELLOW}Note: Using SUPABASE_URL as database connection${NC}"
+    else
+        echo -e "${RED}Error: SUPABASE_DB_URL not set in .env${NC}"
+        echo "Get it from: Supabase Dashboard > Project Settings > Database > Connection string"
+        exit 1
+    fi
 fi
 
 echo -e "${GREEN}╔═══════════════════════════════════╗${NC}"
